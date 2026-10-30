@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Реалистичный персонаж</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #ffffff; /* Белый фон */
+        }
+        #info {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            font-family: Arial, sans-serif;
+            color: #666;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info">
+        <h3>3D Студия</h3>
+        <p>Вращайте мышкой/пальцем для осмотра</p>
+    </div>
+
+    <!-- Подключаем Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, mixer;
+        const clock = new THREE.Clock();
+
+        // Имя вашего файла модели в репозитории
+        const modelFile = 'character.glb'; 
+
+        init();
+        animate();
+
+        function init() {
+            // Сцена
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff); // Чистый белый фон
+
+            // Камера
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.6, 3.5); // Ракурс на уровне роста
+
+            // Рендерер с поддержкой теней
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Освещение студийного типа
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Мягкий свет везде
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(2, 5, 3);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // Белая поверхность пола с тенями
+            const floorGeo = new THREE.PlaneGeometry(20, 20);
+            const floorMat = new THREE.ShadowMaterial({ opacity: 0.15 }); // Полупрозрачная тень на белом
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Загрузка 3D персонажа
+            const loader = new GLTFLoader();
+            loader.load(modelFile, (gltf) => {
+                const model = gltf.scene;
+                
+                // Включаем тени для всех частей меша модели
+                model.traverse((node) => {
+                    if (node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                    }
+                });
+
+                scene.add(model);
+
+                // Запуск анимации (если она зашита в файл)
+                if (gltf.animations && gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(model);
+                    // Ищем анимацию ходьбы или берем первую попавшуюся
+                    const clip = THREE.AnimationClip.findByName(gltf.animations, 'Walking') || gltf.animations[0];
+                    if (clip) {
+                        const action = mixer.clipAction(clip);
+                        action.play();
+                    }
+                }
+            }, undefined, (error) => {
+                console.error('Ошибка загрузки модели:', error);
+            });
+
+            // Управление вращением камеры мышкой
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 1, 0);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.update();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
