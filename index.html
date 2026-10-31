@@ -3,30 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Схема Московского Метро</title>
+    <title>3D Карта Московского Метро</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #0b0f19; /* Темный футуристичный фон */
+            background-color: #07090f;
         }
         #info {
             position: absolute;
             top: 15px;
             left: 15px;
             font-family: Arial, sans-serif;
-            color: #ffffff;
+            color: white;
             pointer-events: none;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
         }
-        h2 { margin: 0 0 5px 0; color: #3498db; }
-        p { margin: 0; font-size: 14px; color: #aaa; }
+        h2 { margin: 0 0 5px 0; color: #4facfe; font-size: 18px; }
+        p { margin: 0; font-size: 13px; color: #ccc; }
     </style>
 </head>
 <body>
 
     <div id="info">
-        <h2>Московское Метро (3D)</h2>
-        <p>Вращайте и приближайте сцену пальцем или мышкой</p>
+        <h2>Московское Метро в 3D</h2>
+        <p>Крутите сцену пальцем или мышкой</p>
     </div>
 
     <!-- Подключаем Three.js -->
@@ -43,98 +47,105 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let scene, camera, renderer, metroGroup;
+        let scene, camera, renderer, mapGroup;
 
         init();
         animate();
 
         function init() {
-            // --- Сцена ---
+            // Сцена
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0b0f19); // Глубокий темный космос/фон
+            scene.background = new THREE.Color(0x07090f);
 
-            // --- Камера ---
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 15, 20); // Смотрим на метро сверху-сбоку
+            // Камера (смотрим под углом сверху)
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 18, 22);
 
-            // --- Рендерер ---
+            // Рендерер
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // --- Освещение ---
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+            // Освещение
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
 
-            // --- Контейнер для метро ---
-            metroGroup = new THREE.Group();
-            scene.add(metroGroup);
+            // Контейнер карты
+            mapGroup = new THREE.Group();
+            scene.add(mapGroup);
 
-            // Цвета линий метро
+            // Фирменные цвета метро Москвы
             const colors = {
-                koltsevaya: 0x8e44ad, // Кольцевая (Коричневая/Фиолетовая)
-                sokolnicheskaya: 0xe74c3c, // Красная
-                zamoskvoretskaya: 0x2ecc71, // Зеленая
-                arbatskaya: 0x3498db // Синяя
+                sokolnicheskaya: 0xef1c24,   // Красная
+                zamoskvoretskaya: 0x22b24c,  // Зеленая
+                arbatsko_pokrovskaya: 0x006699, // Синяя
+                filyovskaya: 0x79d1cf,       // Голубая
+                koltsevaya: 0x8a3fd1,        // Кольцевая (фиолетово-коричневая)
+                tagansko_krasnopresnenskaya: 0x8f0000, // Фиолетовая
+                kalininskaya: 0xffcc00,      // Желтая
+                mcc: 0xd9381e                // МЦК
             };
 
-            // 1. Создаем Кольцевую линию (эллипс / кольцо)
-            const ringRadius = 4;
-            const ringGeo = new THREE.TorusGeometry(ringRadius, 0.12, 16, 100);
-            const ringMat = new THREE.MeshBasicMaterial({ color: colors.koltsevaya });
-            const ring = new THREE.Mesh(ringGeo, ringMat);
-            ring.rotation.x = Math.PI / 2;
-            metroGroup.add(ring);
+            // Функция для создания объемной линии метро
+            function addMetroLine(pointsArray, colorHex, radius = 0.08) {
+                const vectorPoints = pointsArray.map(p => new THREE.Vector3(p[0], 0, p[1]));
+                const curve = new THREE.CatmullRomCurve3(vectorPoints);
+                const geometry = new THREE.TubeGeometry(curve, 64, radius, 8, false);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: colorHex, 
+                    roughness: 0.2,
+                    metalness: 0.1
+                });
+                const tube = new THREE.Mesh(geometry, material);
+                mapGroup.add(tube);
 
-            // Функция для создания радиальных линий и станций
-            function createLine(angle, length, color) {
-                const points = [];
-                const startX = Math.cos(angle) * 1.5;
-                const startZ = Math.sin(angle) * 1.5;
-                const endX = Math.cos(angle) * length;
-                const endZ = Math.sin(angle) * length;
-
-                points.push(new THREE.Vector3(startX, 0, startZ));
-                points.push(new THREE.Vector3(endX, 0, endZ));
-
-                const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                const material = new THREE.LineBasicMaterial({ color: color, linewidth: 3 });
-                const line = new THREE.Line(geometry, material);
-                metroGroup.add(line);
-
-                // Добавляем станции (шарики на линии)
-                for (let i = 1; i <= 3; i++) {
-                    let t = i / 4;
-                    let sx = startX + (endX - startX) * t;
-                    let sz = startZ + (endZ - startZ) * t;
-                    
-                    const stationGeo = new THREE.SphereGeometry(0.18, 16, 16);
-                    const stationMat = new THREE.MeshStandardMaterial({ 
-                        color: 0xffffff, 
-                        emissive: color, 
-                        emissiveIntensity: 0.5 
-                    });
-                    const station = new THREE.Mesh(stationGeo, stationMat);
-                    station.position.set(sx, 0, sz);
-                    metroGroup.add(station);
-                }
+                // Добавляем станции-узлы в точках линии
+                pointsArray.forEach(p => {
+                    const stGeo = new THREE.SphereGeometry(radius * 1.6, 16, 16);
+                    const stMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: colorHex, emissiveIntensity: 0.4 });
+                    const station = new THREE.Mesh(stGeo, stMat);
+                    station.position.set(p[0], 0, p[1]);
+                    mapGroup.add(station);
+                });
             }
 
-            // Создаем радиальные направления под разными углами
-            createLine(0, 7, colors.sokolnicheskaya);
-            createLine(Math.PI / 2, 7, colors.zamoskvoretskaya);
-            createLine(Math.PI, 7, colors.sokolnicheskaya);
-            createLine(-Math.PI / 2, 7, colors.zamoskvoretskaya);
-            
-            createLine(Math.PI / 4, 6.5, colors.arbatskaya);
-            createLine(-Math.PI / 4, 6.5, colors.arbatskaya);
-            createLine(3 * Math.PI / 4, 6.5, colors.arbatskaya);
-            createLine(-3 * Math.PI / 4, 6.5, colors.arbatskaya);
+            // 1. Кольцевая линия (упрощенный контур в центре)
+            const ringPoints = [];
+            for (let i = 0; i <= 20; i++) {
+                let angle = (i / 20) * Math.PI * 2;
+                ringPoints.push([Math.cos(angle) * 3.5, Math.sin(angle) * 3.5]);
+            }
+            addMetroLine(ringPoints, colors.koltsevaya, 0.1);
 
-            // Управление вращением
+            // 2. Радиальные линии, проходящие через центр
+            // Красная (Сокольническая)
+            addMetroLine([[-10, 8], [-5, 4], [-2, 1.5], [0, 0], [3, -3], [7, -7]], colors.sokolnicheskaya);
+            
+            // Зеленая (Замоскворецкая)
+            addMetroLine([[-8, -8], [-4, -4], [0, 0], [4, 4], [8, 8]], colors.zamoskvoretskaya);
+
+            // Синяя (Арбатско-Покровская)
+            addMetroLine([[-9, 0], [-4, 0], [0, 0], [4, 0], [9, 0]], colors.arbatsko_pokrovskaya);
+
+            // Фиолетовая (Таганско-Краснопресненская)
+            addMetroLine([[-7, 7], [-3, 3], [0, 0], [3, -3], [8, -8]], colors.tagansko_krasnopresnenskaya);
+
+            // Желтая (Калининская)
+            addMetroLine([[0, 0], [3, 1], [6, 2], [10, 3]], colors.kalininskaya);
+
+            // МЦК (большое кольцо снаружи)
+            const mccPoints = [];
+            for (let i = 0; i <= 24; i++) {
+                let angle = (i / 24) * Math.PI * 2;
+                mccPoints.push([Math.cos(angle) * 7.5, Math.sin(angle) * 7.5]);
+            }
+            addMetroLine(mccPoints, colors.mcc, 0.06);
+
+            // Настройка управления вращением
             const controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Не даем уйти под карту
             controls.update();
 
             window.addEventListener('resize', onWindowResize);
@@ -148,9 +159,9 @@
 
         function animate() {
             requestAnimationFrame(animate);
-
-            // Медленное вращение всей схемы для красоты
-            metroGroup.rotation.y += 0.002;
+            
+            // Плавное медленное вращение схемы для вау-эффекта
+            mapGroup.rotation.y += 0.0015;
 
             renderer.render(scene, camera);
         }
