@@ -1,170 +1,138 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Карта Московского Метро</title>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #07090f;
-        }
-        #info {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            font-family: Arial, sans-serif;
-            color: white;
-            pointer-events: none;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 10px 15px;
-            border-radius: 8px;
-            backdrop-filter: blur(5px);
-        }
-        h2 { margin: 0 0 5px 0; color: #4facfe; font-size: 18px; }
-        p { margin: 0; font-size: 13px; color: #ccc; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Схема метро в 3D</title>
+<style>
+:root{--bg:#eef0f3;--fg:#1b1d22;--card:#ffffff;--mut:#6b7078}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1013;--fg:#eceef2;--card:#1a1d23;--mut:#9aa0aa}}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+canvas{display:block;touch-action:none}
+#tip{position:fixed;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:var(--card);padding:8px 14px;border-radius:10px;font-size:15px;display:none;box-shadow:0 2px 10px rgba(0,0,0,.2);pointer-events:none;white-space:nowrap}
+#ui{position:fixed;left:0;right:0;bottom:0;background:var(--card);padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-radius:16px 16px 0 0;box-shadow:0 -2px 12px rgba(0,0,0,.15)}
+#lines{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#lines button{border:2px solid var(--c);background:var(--c);color:#fff;border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
+#lines button.off{background:transparent;color:var(--fg)}
+.row{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut)}
+.row input{flex:1}
+.row button{border:1px solid var(--mut);background:transparent;color:var(--fg);border-radius:8px;padding:5px 10px;font-size:13px}
+</style>
 </head>
 <body>
+<div id="tip"></div>
+<div id="ui">
+  <div id="lines"></div>
+  <div class="row">
+    <span>Слои</span><input id="gap" type="range" min="0" max="14" step="0.5" value="6">
+    <button id="rot">Вращение</button>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Данные: "Станция|x|y" — координаты в пикселях исходной схемы
+const LINES=[
+{n:"1 Сокольническая",c:"#e2231a",s:"Бульвар Рокоссовского|918|628;Черкизовская|913|658;Преображенская площадь|850|745;Сокольники|815|789;Красносельская|820|815;Комсомольская|758|845;Красные Ворота|722|880;Чистые пруды|708|900;Лубянка|665|950;Охотный Ряд|612|998;Библиотека имени Ленина|560|1045;Кропоткинская|470|1075;Парк культуры|460|1075;Фрунзенская|440|1100;Спортивная|440|1143;Воробьёвы горы|420|1185;Университет|418|1280;Проспект Вернадского|343|1318;Юго-Западная|343|1372;Тропарёво|343|1396;Румянцево|343|1420;Саларьево|343|1470;Филатов Луг|330|1486;Прокшино|330|1514;Ольховая|330|1540;Новомосковская|343|1587;Потапово|408|1650"},
+{n:"2 Замоскворецкая",c:"#2db34a",s:"Речной вокзал|326|580;Водный стадион|330|603;Войковская|330|656;Сокол|368|715;Аэропорт|390|740;Динамо|440|795;Белорусская|478|845;Маяковская|555|890;Тверская|580|940;Театральная|640|995;Новокузнецкая|668|1055;Павелецкая|715|1130;Автозаводская|715|1215;Технопарк|720|1262;Коломенская|723|1330;Каширская|748|1393;Кантемировская|800|1453;Царицыно|808|1486;Орехово|910|1528;Домодедовская|940|1505;Красногвардейская|1000|1528;Алма-Атинская|1060|1587"},
+{n:"3 Арбатско-Покровская",c:"#1f6fd6",s:"Щёлковская|1012|613;Первомайская|1020|655;Измайловская|1000|690;Партизанская|1000|728;Семёновская|937|805;Электрозаводская|884|858;Бауманская|870|898;Курская|803|940;Площадь Революции|573|1020;Арбатская|555|1000;Смоленская|475|997;Киевская|435|1005;Студенческая|330|1013;Кутузовская|280|1018;Фили|240|1005;Багратионовская|195|1013;Филёвский парк|180|1027;Пионерская|175|1044;Кунцевская|125|1065"},
+{n:"5 Кольцевая",c:"#8b5a2b",closed:1,r:1,s:"Белорусская|478|845;Новослободская|560|806;Проспект Мира|697|797;Комсомольская|758|845;Курская|803|940;Таганская|795|1035;Павелецкая|715|1130;Добрынинская|627|1155;Октябрьская|540|1137;Парк культуры|460|1075;Киевская|435|1005;Краснопресненская|437|935"},
+{n:"6 Калужско-Рижская",c:"#f08a00",s:"Медведково|715|425;Бабушкинская|715|451;Свиблово|715|477;Ботанический сад|715|525;ВДНХ|715|585;Алексеевская|715|622;Рижская|715|735;Проспект Мира|697|797;Сухаревская|640|825;Тургеневская|640|890;Китай-город|740|970;Третьяковская|703|1053;Октябрьская|540|1137;Шаболовская|525|1165;Ленинский проспект|525|1200;Академическая|520|1268;Профсоюзная|520|1312;Новые Черёмушки|520|1340;Калужская|520|1380;Беляево|520|1447;Тёплый Стан|520|1493;Ясенево|520|1517;Новоясеневская|520|1540;Битцевский парк|520|1578"},
+{n:"7 Таганско-Краснопресненская",c:"#8e3a9b",s:"Планерная|247|528;Сходненская|255|562;Тушинская|222|598;Щукинская|222|656;Октябрьское поле|222|740;Полежаевская|265|770;Беговая|340|855;Улица 1905 года|358|905;Баррикадная|440|925;Пушкинская|580|912;Кузнецкий Мост|660|912;Китай-город|740|970;Таганская|795|1035;Пролетарская|850|1085;Волгоградский проспект|897|1140;Текстильщики|1013|1173;Кузьминки|1042|1163;Рязанский проспект|1092|1185;Выхино|1112|1205;Лермонтовский проспект|1125|1285;Жулебино|1125|1318;Котельники|1130|1345"},
+{n:"9 Серпуховско-Тимирязевская",c:"#9a9fa6",s:"Алтуфьево|617|424;Бибирево|617|453;Отрадное|617|483;Владыкино|617|517;Петровско-Разумовская|575|592;Тимирязевская|538|616;Дмитровская|525|676;Савёловская|510|740;Менделеевская|545|772;Цветной бульвар|620|870;Чеховская|617|940;Боровицкая|570|1022;Полянка|585|1077;Серпуховская|627|1142;Тульская|617|1188;Нагатинская|617|1311;Нахимовский проспект|617|1355;Севастопольская|617|1425;Чертановская|617|1463;Южная|617|1492;Пражская|617|1522;Аннино|617|1580;Бульвар Дмитрия Донского|617|1618;Бунинская аллея|607|1745"}
+];
+const K=0.1, dark=matchMedia('(prefers-color-scheme:dark)').matches;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(dark?0x0e1013:0xeef0f3);
+const cam=new THREE.PerspectiveCamera(50,1,0.1,1000);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(ren.domElement);
+scene.add(new THREE.AmbientLight(0xffffff,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.6);sun.position.set(30,60,20);scene.add(sun);
 
-    <div id="info">
-        <h2>Московское Метро в 3D</h2>
-        <p>Крутите сцену пальцем или мышкой</p>
-    </div>
+// Земля-сетка
+const grid=new THREE.GridHelper(120,40,dark?0x3a3f48:0xc3c8d0,dark?0x23272e:0xdadee4);
+grid.position.y=-1;scene.add(grid);
 
-    <!-- Подключаем Three.js -->
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
+const groups=[], stations=[], byName={};
+const sphG=new THREE.SphereGeometry(1,16,12);
+LINES.forEach((L,i)=>{
+  const g=new THREE.Group();scene.add(g);groups.push(g);
+  const pts=L.s.split(";").map(t=>{const a=t.split("|");return{n:a[0],p:new THREE.Vector3((a[1]-620)*K,0,(a[2]-960)*K)}});
+  const curve=new THREE.CatmullRomCurve3(pts.map(o=>o.p),!!L.closed,"catmullrom",0.2);
+  const col=new THREE.Color(L.c);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(curve,pts.length*10,L.r?0.45:0.3,8,!!L.closed),new THREE.MeshStandardMaterial({color:col,roughness:0.5})));
+  pts.forEach(o=>{
+    const m=new THREE.Mesh(sphG,new THREE.MeshStandardMaterial({color:dark?0x2a2e36:0xffffff,roughness:0.4}));
+    const s=L.r?0.8:0.62;m.scale.set(s,s,s);m.position.copy(o.p);
+    m.userData={name:o.n,line:L.n,li:i};
+    g.add(m);stations.push(m);
+    (byName[o.n]=byName[o.n]||[]).push(m);
+  });
+  const btn=document.createElement("button");
+  btn.textContent=L.n;btn.style.setProperty("--c",L.c);
+  btn.onclick=()=>{g.visible=!g.visible;btn.classList.toggle("off",!g.visible);links()};
+  document.getElementById("lines").appendChild(btn);
+});
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// Вертикальные связи пересадок
+let linkObj=null;
+function links(){
+  if(linkObj){scene.remove(linkObj);linkObj.geometry.dispose()}
+  const v=[];
+  Object.values(byName).forEach(arr=>{
+    const a=arr.filter(m=>groups[m.userData.li].visible).map(m=>m.getWorldPosition(new THREE.Vector3()));
+    for(let i=1;i<a.length;i++)v.push(a[i-1],a[i]);
+  });
+  linkObj=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(v),new THREE.LineBasicMaterial({color:dark?0xffffff:0x333333}));
+  scene.add(linkObj);
+}
+const gapEl=document.getElementById("gap");
+function setGap(){
+  const gp=+gapEl.value;
+  groups.forEach((g,i)=>g.position.y=i*gp);
+  scene.updateMatrixWorld(true);links();
+}
+gapEl.oninput=setGap;setGap();
 
-        let scene, camera, renderer, mapGroup;
+// Камера: вращение, масштаб, жесты
+let th=0.6,ph=1.0,dist=95,auto=false;
+const ptrs=new Map();let pd=0,moved=0;
+function place(){
+  cam.position.set(dist*Math.sin(ph)*Math.sin(th),dist*Math.cos(ph)+8,dist*Math.sin(ph)*Math.cos(th));
+  cam.lookAt(0,8,0);
+}
+const el=ren.domElement;
+el.addEventListener("pointerdown",e=>{el.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);moved=0;pd=0});
+el.addEventListener("pointermove",e=>{
+  if(!ptrs.has(e.pointerId))return;
+  const o=ptrs.get(e.pointerId);
+  if(ptrs.size===1){
+    const dx=e.clientX-o[0],dy=e.clientY-o[1];moved+=Math.abs(dx)+Math.abs(dy);
+    th-=dx*0.006;ph=Math.min(1.55,Math.max(0.15,ph-dy*0.006));
+  }else{
+    ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+    const p=[...ptrs.values()],d=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);
+    if(pd)dist=Math.min(200,Math.max(20,dist*pd/d));pd=d;moved=99;return;
+  }
+  ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+});
+el.addEventListener("pointerup",e=>{ptrs.delete(e.pointerId);pd=0;if(moved<6)pick(e)});
+el.addEventListener("pointercancel",e=>ptrs.delete(e.pointerId));
+el.addEventListener("wheel",e=>{e.preventDefault();dist=Math.min(200,Math.max(20,dist*(1+e.deltaY*0.001)))},{passive:false});
+document.getElementById("rot").onclick=()=>{auto=!auto};
 
-        init();
-        animate();
-
-        function init() {
-            // Сцена
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x07090f);
-
-            // Камера (смотрим под углом сверху)
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 18, 22);
-
-            // Рендерер
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            // Освещение
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-            scene.add(ambientLight);
-
-            // Контейнер карты
-            mapGroup = new THREE.Group();
-            scene.add(mapGroup);
-
-            // Фирменные цвета метро Москвы
-            const colors = {
-                sokolnicheskaya: 0xef1c24,   // Красная
-                zamoskvoretskaya: 0x22b24c,  // Зеленая
-                arbatsko_pokrovskaya: 0x006699, // Синяя
-                filyovskaya: 0x79d1cf,       // Голубая
-                koltsevaya: 0x8a3fd1,        // Кольцевая (фиолетово-коричневая)
-                tagansko_krasnopresnenskaya: 0x8f0000, // Фиолетовая
-                kalininskaya: 0xffcc00,      // Желтая
-                mcc: 0xd9381e                // МЦК
-            };
-
-            // Функция для создания объемной линии метро
-            function addMetroLine(pointsArray, colorHex, radius = 0.08) {
-                const vectorPoints = pointsArray.map(p => new THREE.Vector3(p[0], 0, p[1]));
-                const curve = new THREE.CatmullRomCurve3(vectorPoints);
-                const geometry = new THREE.TubeGeometry(curve, 64, radius, 8, false);
-                const material = new THREE.MeshStandardMaterial({ 
-                    color: colorHex, 
-                    roughness: 0.2,
-                    metalness: 0.1
-                });
-                const tube = new THREE.Mesh(geometry, material);
-                mapGroup.add(tube);
-
-                // Добавляем станции-узлы в точках линии
-                pointsArray.forEach(p => {
-                    const stGeo = new THREE.SphereGeometry(radius * 1.6, 16, 16);
-                    const stMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: colorHex, emissiveIntensity: 0.4 });
-                    const station = new THREE.Mesh(stGeo, stMat);
-                    station.position.set(p[0], 0, p[1]);
-                    mapGroup.add(station);
-                });
-            }
-
-            // 1. Кольцевая линия (упрощенный контур в центре)
-            const ringPoints = [];
-            for (let i = 0; i <= 20; i++) {
-                let angle = (i / 20) * Math.PI * 2;
-                ringPoints.push([Math.cos(angle) * 3.5, Math.sin(angle) * 3.5]);
-            }
-            addMetroLine(ringPoints, colors.koltsevaya, 0.1);
-
-            // 2. Радиальные линии, проходящие через центр
-            // Красная (Сокольническая)
-            addMetroLine([[-10, 8], [-5, 4], [-2, 1.5], [0, 0], [3, -3], [7, -7]], colors.sokolnicheskaya);
-            
-            // Зеленая (Замоскворецкая)
-            addMetroLine([[-8, -8], [-4, -4], [0, 0], [4, 4], [8, 8]], colors.zamoskvoretskaya);
-
-            // Синяя (Арбатско-Покровская)
-            addMetroLine([[-9, 0], [-4, 0], [0, 0], [4, 0], [9, 0]], colors.arbatsko_pokrovskaya);
-
-            // Фиолетовая (Таганско-Краснопресненская)
-            addMetroLine([[-7, 7], [-3, 3], [0, 0], [3, -3], [8, -8]], colors.tagansko_krasnopresnenskaya);
-
-            // Желтая (Калининская)
-            addMetroLine([[0, 0], [3, 1], [6, 2], [10, 3]], colors.kalininskaya);
-
-            // МЦК (большое кольцо снаружи)
-            const mccPoints = [];
-            for (let i = 0; i <= 24; i++) {
-                let angle = (i / 24) * Math.PI * 2;
-                mccPoints.push([Math.cos(angle) * 7.5, Math.sin(angle) * 7.5]);
-            }
-            addMetroLine(mccPoints, colors.mcc, 0.06);
-
-            // Настройка управления вращением
-            const controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Не даем уйти под карту
-            controls.update();
-
-            window.addEventListener('resize', onWindowResize);
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Плавное медленное вращение схемы для вау-эффекта
-            mapGroup.rotation.y += 0.0015;
-
-            renderer.render(scene, camera);
-        }
-    </script>
+// Выбор станции
+const rc=new THREE.Raycaster(),tip=document.getElementById("tip");
+function pick(e){
+  rc.setFromCamera(new THREE.Vector2(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight*2-1)),cam);
+  const hit=rc.intersectObjects(stations.filter(m=>groups[m.userData.li].visible))[0];
+  if(hit){tip.textContent=hit.object.userData.name+" — "+hit.object.userData.line;tip.style.display="block"}
+  else tip.style.display="none";
+}
+function resize(){ren.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+addEventListener("resize",resize);resize();
+(function loop(){requestAnimationFrame(loop);if(auto)th+=0.003;place();ren.render(scene,cam)})();
+</script>
 </body>
 </html>
