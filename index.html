@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Реалистичный персонаж</title>
+    <title>3D Персонаж на белом фоне</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #ffffff; /* Белый фон */
+            background-color: #ffffff; /* Чистый белый фон */
         }
         #info {
             position: absolute;
             top: 15px;
             left: 15px;
             font-family: Arial, sans-serif;
-            color: #666;
+            color: #444;
             pointer-events: none;
         }
     </style>
@@ -27,7 +27,7 @@
         <p>Вращайте мышкой/пальцем для осмотра</p>
     </div>
 
-    <!-- Подключаем Three.js -->
+    <!-- Подключаем Three.js через официальный модуль -->
     <script type="importmap">
         {
             "imports": {
@@ -45,8 +45,8 @@
         let scene, camera, renderer, mixer;
         const clock = new THREE.Clock();
 
-        // Имя вашего файла модели в репозитории
-        const modelFile = 'character.glb'; 
+        // Используем бесплатную стандартную анимированную модель для теста
+        const modelUrl = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive.glb';
 
         init();
         animate();
@@ -54,44 +54,43 @@
         function init() {
             // Сцена
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xffffff); // Чистый белый фон
+            scene.background = new THREE.Color(0xffffff); // Белый фон
 
             // Камера
-            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 1.6, 3.5); // Ракурс на уровне роста
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 2, 6);
 
-            // Рендерер с поддержкой теней
+            // Рендерер
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.body.appendChild(renderer.domElement);
 
-            // Освещение студийного типа
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Мягкий свет везде
+            // Освещение
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
             const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(2, 5, 3);
+            dirLight.position.set(3, 10, 5);
             dirLight.castShadow = true;
-            dirLight.shadow.mapSize.width = 2048;
-            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
             scene.add(dirLight);
 
-            // Белая поверхность пола с тенями
-            const floorGeo = new THREE.PlaneGeometry(20, 20);
-            const floorMat = new THREE.ShadowMaterial({ opacity: 0.15 }); // Полупрозрачная тень на белом
+            // Белый пол с поддержкой теней
+            const floorGeo = new THREE.PlaneGeometry(15, 15);
+            const floorMat = new THREE.ShadowMaterial({ opacity: 0.15 });
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.rotation.x = -Math.PI / 2;
             floor.receiveShadow = true;
             scene.add(floor);
 
-            // Загрузка 3D персонажа
+            // Загрузка модели
             const loader = new GLTFLoader();
-            loader.load(modelFile, (gltf) => {
+            loader.load(modelUrl, (gltf) => {
                 const model = gltf.scene;
                 
-                // Включаем тени для всех частей меша модели
                 model.traverse((node) => {
                     if (node.isMesh) {
                         node.castShadow = true;
@@ -101,25 +100,23 @@
 
                 scene.add(model);
 
-                // Запуск анимации (если она зашита в файл)
+                // Запуск анимации ходьбы (в этой модели анимация называется "Walking")
                 if (gltf.animations && gltf.animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
-                    // Ищем анимацию ходьбы или берем первую попавшуюся
-                    const clip = THREE.AnimationClip.findByName(gltf.animations, 'Walking') || gltf.animations[0];
-                    if (clip) {
-                        const action = mixer.clipAction(clip);
-                        action.play();
+                    // Ищем анимацию "Walking" или берем индекс 4 (ходьба у робота)
+                    const walkAnim = THREE.AnimationClip.findByName(gltf.animations, 'Walking') || gltf.animations[4];
+                    if (walkAnim) {
+                        mixer.clipAction(walkAnim).play();
                     }
                 }
             }, undefined, (error) => {
                 console.error('Ошибка загрузки модели:', error);
             });
 
-            // Управление вращением камеры мышкой
+            // Управление камерой
             const controls = new OrbitControls(camera, renderer.domElement);
             controls.target.set(0, 1, 0);
             controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
             controls.update();
 
             window.addEventListener('resize', onWindowResize);
